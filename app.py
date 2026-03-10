@@ -16,33 +16,38 @@ st.set_page_config(
     initial_sidebar_state="auto",
 )
 def inject_ga_and_nuke_badge():
-    html_code = """
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-3SP3QLJ9HD"></script>
-    <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-3SP3QLJ9HD');
-
-    const hunt = () => {
-      try {
-        const p = window.parent.document;
-        const q = 'div[class*="viewerBadge"], ' + 
-                  'a[href*="streamlit.io/cloud"], ' + 
-                  '.stDeployButton';
-        const nodes = p.querySelectorAll(q);
-        nodes.forEach(n => {
-          n.style.setProperty('display', 'none', 'important');
-        });
-      } catch(e) {}
-    };
-    hunt();
-    setInterval(hunt, 2000);
-    </script>
-    """
+    # totaniom 
+    html_code = (
+        "<script async src='https://"
+        "www.googletagmanager.com/"
+        "gtag/js?id=G-3SP3QLJ9HD'>"
+        "</script><script>"
+        "window.dataLayer="
+        "window.dataLayer||[];"
+        "function gtag(){"
+        "dataLayer.push(arguments);}"
+        "gtag('js',new Date());"
+        "gtag('config','G-3SP3QLJ9HD');"
+        "const h=()=>{"
+        "try{"
+        "const p=window.parent.document;"
+        "const q='[class*=\"viewerBadge\"],"
+        "a[href*=\"streamlit\"],"
+        ".stDeployButton';"
+        "const targets=p.querySelectorAll(q);"
+        "targets.forEach(n=>{"
+        "n.style.setProperty("
+        "'display','none','important')"
+        "});"
+        "}catch(e){}"
+        "};"
+        "h();setInterval(h,2000);"
+        "</script>"
+    )
     components.html(html_code, height=0, width=0)
 
 inject_ga_and_nuke_badge()
+
 
 
 
