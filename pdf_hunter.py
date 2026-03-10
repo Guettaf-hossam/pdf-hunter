@@ -6,6 +6,7 @@ import re
 import sys
 import unicodedata
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Optional
 
@@ -39,6 +40,7 @@ class BookResult:
     source: str
     is_direct_pdf: bool = False
     mirror: Optional[str] = None
+    doc_type: str = "General PDF"   # "Book" | "Academic" | "General PDF"
 
     def to_dict(self) -> dict:
         return {
@@ -47,11 +49,19 @@ class BookResult:
             "source": self.source,
             "is_direct_pdf": self.is_direct_pdf,
             "mirror": self.mirror,
+            "doc_type": self.doc_type,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "BookResult":
-        return cls(**d)
+        return cls(
+            title=d["title"],
+            link=d["link"],
+            source=d["source"],
+            is_direct_pdf=d.get("is_direct_pdf", False),
+            mirror=d.get("mirror"),
+            doc_type=d.get("doc_type", "General PDF"),
+        )
 
 
 def _slugify(text: str) -> str:
@@ -103,42 +113,65 @@ async def _find_fastest_mirror(
 
 async def search_duckduckgo(book_name: str, max_results: int = 10) -> list[BookResult]:
     """
-    DDGS is synchronous — delegated to a thread executor to avoid blocking the loop.
-    Also covers Z-Library and Anna's Archive via site: dorks since both sites
-    render search results with JavaScript and cannot be directly scraped.
+    Runs 8 OSINT dorks concurrently (4 workers) to cover the full search surface:
+    books, shadow libraries, academic documents (cours/TD/TP), and open web PDFs.
+    Each dork runs in its own thread via ThreadPoolExecutor so DDGS blocking I/O
+    does not stall the others — total latency ~= slowest single dork, not sum.
     """
-    dorks = [
-        (f'"{book_name}" filetype:pdf',                                        "DuckDuckGo"),
-        (f'"{book_name}" site:archive.org',                                    "DuckDuckGo"),
-        (f'"{book_name}" pdf download',                                        "DuckDuckGo"),
-        (f'"{book_name}" site:z-lib.fm OR site:z-lib.id',                     "Z-Library"),
-        (f'"{book_name}" site:annas-archive.gs OR site:annas-archive.org',     "Anna's Archive"),
+    # (dork_query, source_label, doc_type)
+    dorks: list[tuple[str, str, str]] = [
+        # Open web / general
+        (f'"{book_name}" filetype:pdf',                                           "DuckDuckGo",     "General PDF"),
+        (f'"{book_name}" site:archive.org',                                       "DuckDuckGo",     "General PDF"),
+        (f'"{book_name}" pdf download',                                           "DuckDuckGo",     "General PDF"),
+        # Shadow libraries (indexed via DDG)
+        (f'"{book_name}" site:z-lib.fm OR site:z-lib.id',                        "Z-Library",      "Book"),
+        (f'"{book_name}" site:annas-archive.gs OR site:annas-archive.org',        "Anna's Archive", "Book"),
+        # Academic OSINT
+        (f'(cours OR TD OR TP OR syllabus) "{book_name}" filetype:pdf',           "DuckDuckGo",     "Academic"),
+        (f'"{book_name}" site:academia.edu OR site:researchgate.net',             "DuckDuckGo",     "Academic"),
+        (f'"{book_name}" site:slideshare.net OR site:scribd.com filetype:pdf',    "DuckDuckGo",     "Academic"),
     ]
 
-    def _sync() -> list[BookResult]:
+    def _search_one(dork: str, label: str, dtype: str) -> list[BookResult]:
+        """Single DDG dork — runs in its own thread."""
+        batch: list[BookResult] = []
+        try:
+            with DDGS() as ddgs:
+                for r in ddgs.text(dork, max_results=max_results) or []:
+                    link = r.get("href", "")
+                    if not link:
+                        continue
+                    batch.append(BookResult(
+                        title=r.get("title", "Unknown"),
+                        link=link,
+                        source=label,
+                        is_direct_pdf=link.lower().endswith(".pdf"),
+                        doc_type=dtype,
+                    ))
+        except Exception as exc:
+            print(f"  [DDG] dork failed ({type(exc).__name__}): {dork[:60]}")
+        return batch
+
+    def _sync_parallel() -> list[BookResult]:
         results: list[BookResult] = []
         seen: set[str] = set()
-        for dork, label in dorks:
-            try:
-                with DDGS() as ddgs:
-                    for r in ddgs.text(dork, max_results=max_results) or []:
-                        link = r.get("href", "")
-                        if not link or link in seen:
-                            continue
-                        seen.add(link)
-                        results.append(BookResult(
-                            title=r.get("title", "Unknown"),
-                            link=link,
-                            source=label,
-                            is_direct_pdf=link.lower().endswith(".pdf"),
-                        ))
-            except Exception as exc:
-                print(f"  [DDG] dork failed ({type(exc).__name__}): {dork[:60]}")
+        # max_workers=4: 4 dorks in flight simultaneously — balanced DDG pressure
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = {
+                pool.submit(_search_one, dork, label, dtype): dork
+                for dork, label, dtype in dorks
+            }
+            for future in as_completed(futures):
+                for r in future.result():
+                    if r.link not in seen:
+                        seen.add(r.link)
+                        results.append(r)
         return results
 
     loop = asyncio.get_event_loop()
-    results = await loop.run_in_executor(None, _sync)
-    print(f"  [DuckDuckGo] {len(results)} hits found.")
+    results = await loop.run_in_executor(None, _sync_parallel)
+    print(f"  [DuckDuckGo] {len(results)} hits found ({len(dorks)} dorks, 4 workers).")
     return results
 
 
@@ -178,7 +211,8 @@ async def search_libgen(session: aiohttp.ClientSession, book_name: str) -> list[
             continue
         full = href if href.startswith("http") else f"{base}{href}"
         results.append(BookResult(
-            title=title, link=full, source="LibGen", is_direct_pdf=(ext == "pdf")
+            title=title, link=full, source="LibGen",
+            is_direct_pdf=(ext == "pdf"), doc_type="Book"
         ))
 
     print(f"  [LibGen] {len(results)} hits found via {base}.")
@@ -254,6 +288,7 @@ def _sync_annas_archive(book_name: str) -> list[BookResult]:
             link=f"{base}{href}",
             source="Anna's Archive",
             is_direct_pdf=False,
+            doc_type="Book",
         ))
 
     print(f"  [Anna's] {len(results)} hits found via {base}.")
@@ -310,6 +345,7 @@ async def search_open_library(session: aiohttp.ClientSession, book_name: str) ->
             source="Open Library / IA",
             is_direct_pdf=True,
             mirror=f"https://archive.org/details/{ia_id}",
+            doc_type="Book",
         ))
 
     print(f"  [OpenLibrary] {len(results)} hits found.")
