@@ -12,7 +12,7 @@ st.set_page_config(
     page_title="PDF Hunter",
     page_icon="📚",
     layout="centered",
-    initial_sidebar_state="auto",
+    initial_sidebar_state="expanded",
 )
 
 # All animations use transform/opacity ONLY — these are GPU-composited and
