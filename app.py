@@ -1077,7 +1077,7 @@ st.markdown("""
 <div style="text-align:center;padding:1.2rem 0 1rem;animation:fadeSlideUp 0.5s ease-out both;">
     <div style="font-size:0.7rem;color:#334155;letter-spacing:1px;text-transform:uppercase;font-family:'JetBrains Mono',monospace;">
         Built by
-        <a href="https://github.com/Guettaf-hossam" style="color:#7c3aed;text-decoration:none;font-weight:600;">knight</a>
+        <a href="https://github.com/Guettaf-hossam" style="color:#7c3aed;text-decoration:none;font-weight:600;">Houssem Eddine Guettaf</a>
     </div>
     <div style="font-size:0.6rem;color:#1e293b;margin-top:4px;">
         PDF Hunter — open source · searches public indexes only
