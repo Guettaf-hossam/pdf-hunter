@@ -191,7 +191,7 @@ if submitted and query.strip():
 
     books    = [r for r in raw if r.get("doc_type") == "Book"]
     academic = [r for r in raw if r.get("doc_type") == "Academic"]
-    general  = [r for r in raw if r.get("doc_type") == "General PDF"]
+    general  = [r for r in raw if r.get("doc_type", "General PDF") == "General PDF"]
 
     direct_count = sum(1 for r in raw if r["is_direct_pdf"])
 

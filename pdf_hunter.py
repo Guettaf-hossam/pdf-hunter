@@ -398,7 +398,8 @@ async def search_zlibrary(session: aiohttp.ClientSession, book_name: str) -> lis
         if full not in seen:
             seen.add(full)
             results.append(BookResult(
-                title=title, link=full, source="Z-Library", is_direct_pdf=False
+                title=title, link=full, source="Z-Library",
+                is_direct_pdf=False, doc_type="Book"
             ))
 
     print(f"  [ZLibrary] {len(results)} hits found.")
