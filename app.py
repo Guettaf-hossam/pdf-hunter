@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 
 import nest_asyncio
 import streamlit as st
@@ -139,23 +140,23 @@ def render_result(r: dict, idx: int) -> None:
     dt_cls, dt_label   = DOCTYPE_BADGE.get(r.get("doc_type", "General PDF"), ("dtype-general", "📄 PDF"))
     card_class  = "direct" if r["is_direct_pdf"] else "page"
     pdf_tag     = '<span class="pdf-tag">⬇ PDF</span>' if r["is_direct_pdf"] else ""
+    safe_title  = html.escape(r["title"])
+    safe_link   = html.escape(r["link"])
     mirror_html = (
         f'<div class="result-link" style="margin-top:3px">Mirror: '
-        f'<a href="{r["mirror"]}" target="_blank">{r["mirror"][:80]}</a></div>'
+        f'<a href="{html.escape(r["mirror"])}" target="_blank">{html.escape(r["mirror"][:80])}</a></div>'
         if r.get("mirror") else ""
     )
-    st.markdown(f"""
-    <div class="result-card {card_class}">
-        <div>
-            <span class="badge {src_cls}">{src_label}</span>
-            <span class="badge {dt_cls}">{dt_label}</span>
-            {pdf_tag}
-        </div>
-        <div class="result-title">{idx}. {r["title"]}</div>
-        <div class="result-link"><a href="{r["link"]}" target="_blank">{r["link"]}</a></div>
-        {mirror_html}
-    </div>
-    """, unsafe_allow_html=True)
+    # HTML must start at column 0 — Markdown treats 4+ leading spaces as a <pre><code> block
+    st.markdown(
+f"""<div class="result-card {card_class}">
+<div><span class="badge {src_cls}">{src_label}</span><span class="badge {dt_cls}">{dt_label}</span>{pdf_tag}</div>
+<div class="result-title">{idx}. {safe_title}</div>
+<div class="result-link"><a href="{safe_link}" target="_blank">{safe_link}</a></div>
+{mirror_html}
+</div>""",
+        unsafe_allow_html=True,
+    )
 
 
 def section(label: str, css_class: str) -> None:
