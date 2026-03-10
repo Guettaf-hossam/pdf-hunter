@@ -10,9 +10,10 @@ from dataclasses import dataclass
 from typing import Optional
 
 import aiohttp
-import cloudscraper
+from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup
 from ddgs import DDGS
+
 
 # Fix Windows cp1252 terminal only when running as CLI — Streamlit manages its own I/O
 if hasattr(sys.stdout, "buffer") and sys.stdout.encoding.lower() != "utf-8":
@@ -160,7 +161,7 @@ async def search_libgen(session: aiohttp.ClientSession, book_name: str) -> list[
         return []
 
     base, html = result
-    soup = BeautifulSoup(html, "lxml")
+    soup = BeautifulSoup(html, "html.parser")
     results: list[BookResult] = []
 
     for row in soup.select("table.c > tbody > tr, #tablelibgen > tbody > tr")[1:16]:
@@ -186,42 +187,60 @@ async def search_libgen(session: aiohttp.ClientSession, book_name: str) -> list[
 
 def _sync_annas_archive(book_name: str) -> list[BookResult]:
     """
-    Synchronous cloudscraper search for Anna's Archive.
-    cloudscraper spoofs a browser TLS fingerprint to bypass Cloudflare JS challenges.
-    This runs in a thread executor so it does not block the async event loop.
+    curl_cffi impersonates a real Chrome TLS/JA3 fingerprint — the most robust
+    method against modern Cloudflare JS challenges. Replaces cloudscraper which
+    now fails against Cloudflare's current bot-detection heuristics.
+    Runs in a thread executor to avoid blocking the async event loop.
     """
     mirrors = [
-        "https://annas-archive.gs",     # confirmed reachable — try first
+        "https://annas-archive.gs",
         "https://annas-archive.se",
         "https://annas-archive.li",
         "https://annas-archive.org",
     ]
-    scraper = cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows"})
     resp = None
     base = ""
 
     for mirror in mirrors:
         try:
-            r = scraper.get(
+            r = cffi_requests.get(
                 f"{mirror}/search",
                 params={"q": book_name, "ext": "pdf"},
                 headers=HEADERS,
                 timeout=12,
+                impersonate="chrome110",
             )
-            if r.status_code == 200 and len(r.text) > 500:
-                resp = r
-                base = mirror
-                break
-            else:
-                print(f"  [Anna's] {mirror} returned status={r.status_code} len={len(r.text)} — skipping")
-        except Exception as exc:
-            print(f"  [Anna's] Mirror {mirror} failed ({type(exc).__name__})")
+
+            # Explicit status-code triage for accurate cloud diagnostics
+            if r.status_code == 403:
+                print(f"  [Anna's] {mirror} → Cloudflare Block (403)")
+                continue
+            if r.status_code == 429:
+                print(f"  [Anna's] {mirror} → Rate Limited (429) — backing off")
+                continue
+            if r.status_code != 200:
+                print(f"  [Anna's] {mirror} → Unexpected HTTP {r.status_code}")
+                continue
+
+            # Short body = Cloudflare JS challenge page, not real content
+            if len(r.text) <= 500:
+                print(f"  [Anna's] {mirror} → Challenge page (body={len(r.text)} bytes)")
+                continue
+
+            resp = r
+            base = mirror
+            break
+
+        except cffi_requests.exceptions.Timeout:
+            print(f"  [Anna's] {mirror} → Timed out")
+        except cffi_requests.exceptions.ConnectionError:
+            print(f"  [Anna's] {mirror} → Connection refused / DNS failure")
 
     if resp is None:
-        print("  [Anna's] All mirrors unreachable.")
+        print("  [Anna's] All mirrors exhausted — unreachable.")
         return []
 
-    soup = BeautifulSoup(resp.text, "lxml")
+    soup = BeautifulSoup(resp.text, "html.parser")
     results: list[BookResult] = []
 
     for item in soup.select("a[href^='/md5/']")[:15]:
@@ -326,7 +345,7 @@ async def search_zlibrary(session: aiohttp.ClientSession, book_name: str) -> lis
         print(f"  [ZLibrary] Connection error ({type(exc).__name__})")
         return []
 
-    soup       = BeautifulSoup(html, "lxml")
+    soup       = BeautifulSoup(html, "html.parser")
     book_links = soup.select("a[href*='/book/']")[:15]
     if not book_links:
         book_links = soup.select(".z-bookItem a, .resItemBox a, h3 a")[:15]
