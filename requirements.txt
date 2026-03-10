@@ -1,6 +1,8 @@
+aiohttp
 ddgs
 requests
 beautifulsoup4
 lxml
 cloudscraper
+nest_asyncio
 streamlit
