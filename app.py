@@ -339,17 +339,23 @@ html, body, [class*="css"] {
 .sh-academic { color: #34d399; }
 .sh-general  { color: #475569; }
 
-/* ── Streamlit Overrides ───────────────────────────── */
-
-#MainMenu, footer { visibility: hidden; height: 0; }
+/* ── THE ULTIMATE STREAMLIT WATERMARK ANNIHILATOR ── */
+#MainMenu, footer { display: none !important; visibility: hidden !important; }
 header[data-testid="stHeader"] { background: transparent !important; }
 
-/* Eradicate the Streamlit free-tier watermark */
-.viewerBadge_container,
-.viewerBadge_link,
-a[href^="https://streamlit.io/cloud"] {
+[class^="viewerBadge_"],
+[class*=" viewerBadge_"],
+[class*="viewerBadge_container"],
+a[href*="streamlit.io/cloud"] {
     display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    position: absolute !important;
+    pointer-events: none !important;
 }
+
 
 .stFormSubmitButton > button {
     background: linear-gradient(135deg, #7c3aed, #6366f1) !important;
