@@ -342,7 +342,15 @@ html, body, [class*="css"] {
 /* ── Streamlit Overrides ───────────────────────────── */
 
 #MainMenu, footer { visibility: hidden; height: 0; }
-header[data-testid="stHeader"] { background: transparent !important; }
+header[data-testid="stHeader"] 
+/* Eradicate the Streamlit free-tier watermark */
+.viewerBadge_container,
+.viewerBadge_link,
+a[href^="https://streamlit.io/cloud"] {
+    display: none !important;
+}
+
+{ background: transparent !important; }
 
 .stFormSubmitButton > button {
     background: linear-gradient(135deg, #7c3aed, #6366f1) !important;
