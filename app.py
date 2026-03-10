@@ -341,7 +341,8 @@ html, body, [class*="css"] {
 
 /* ── Streamlit Overrides ───────────────────────────── */
 
-#MainMenu, header[data-testid="stHeader"], footer { visibility: hidden; height: 0; }
+#MainMenu, footer { visibility: hidden; height: 0; }
+header[data-testid="stHeader"] { background: transparent !important; }
 
 .stFormSubmitButton > button {
     background: linear-gradient(135deg, #7c3aed, #6366f1) !important;
