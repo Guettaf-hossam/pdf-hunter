@@ -6,7 +6,7 @@ Search across **LibGen · Z-Library · Anna's Archive · Open Library · DuckDuc
 
 ## Live Demo
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://your-username-pdf-hunter.streamlit.app)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://pdf-hunter.streamlit.app)
 
 ## Sources
 
@@ -21,7 +21,7 @@ Search across **LibGen · Z-Library · Anna's Archive · Open Library · DuckDuc
 ## Run Locally
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/pdf-hunter
+git clone https://github.com/Guettaf-hossam/pdf-hunter
 cd pdf-hunter
 python -m venv .venv
 .venv\Scripts\activate
@@ -40,6 +40,6 @@ python pdf_hunter.py "Book Title Author Name"
 2. Go to [share.streamlit.io](https://share.streamlit.io)
 3. Connect your GitHub repo
 4. Set **Main file path** to `app.py`
-5. Click Deploy — your app is live at `https://your-username-pdf-hunter.streamlit.app`
+5. Click Deploy — your app is live at `https://pdf-hunter.streamlit.app`
 
 No domain purchase needed.
