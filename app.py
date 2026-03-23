@@ -19,27 +19,22 @@ def inject_ga_and_nuke_badge():
     html_code = """
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-3SP3QLJ9HD"></script>
     <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-3SP3QLJ9HD');
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-3SP3QLJ9HD');
 
-    const h = () => {
-      try {
-        const p = window.parent.document;
-        const q = `
-          [class*="viewerBadge"],
-          a[href*="streamlit"],
-          .stDeployButton
-        `;
-        const nodes = p.querySelectorAll(q);
-        nodes.forEach(n => {
-          n.style.setProperty('display', 'none', 'important');
-        });
-      } catch(e) {}
-    };
-    h();
-    setInterval(h, 2000);
+      // 2. The Ultimate JS Nuke for Streamlit Watermark
+      const huntAndDestroy = () => {
+          try {
+              const parentDoc = window.parent.document;
+              const targets = parentDoc.querySelectorAll('div[class*="viewerBadge"], a[href*="streamlit.io/cloud"], .stDeployButton, img[src*="streamlit"]');
+              targets.forEach(node => node.style.setProperty('display', 'none', 'important'));
+          } catch (e) {}
+      };
+      
+      huntAndDestroy();
+      setInterval(huntAndDestroy, 2000);
     </script>
     """
     components.html(html_code, height=0, width=0)
