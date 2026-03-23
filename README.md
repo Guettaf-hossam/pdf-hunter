@@ -43,3 +43,7 @@ python pdf_hunter.py "Book Title Author Name"
 5. Click Deploy — your app is live at `https://pdf-hunter.streamlit.app`
 
 No domain purchase needed.
+
+## License
+
+This project is licensed under the [GNU General Public License v3.0](LICENSE). This means anyone can copy and modify the code, but they **must** open-source their changes and they cannot use it in proprietary/closed-source commercial projects.
