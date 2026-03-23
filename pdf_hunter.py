@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import aiohttp
-from curl_cffi import requests as cffi_requests
+
 from bs4 import BeautifulSoup
 from ddgs import DDGS
 
@@ -219,86 +219,77 @@ async def search_libgen(session: aiohttp.ClientSession, book_name: str) -> list[
     return results
 
 
-def _sync_annas_archive(book_name: str) -> list[BookResult]:
-    """
-    curl_cffi impersonates a real Chrome TLS/JA3 fingerprint — the most robust
-    method against modern Cloudflare JS challenges. Replaces cloudscraper which
-    now fails against Cloudflare's current bot-detection heuristics.
-    Runs in a thread executor to avoid blocking the async event loop.
-    """
-    mirrors = [
-        "https://annas-archive.gs",
-        "https://annas-archive.se",
-        "https://annas-archive.li",
-        "https://annas-archive.org",
-    ]
-    resp = None
-    base = ""
-
-    for mirror in mirrors:
-        try:
-            r = cffi_requests.get(
-                f"{mirror}/search",
-                params={"q": book_name, "ext": "pdf"},
-                headers=HEADERS,
-                timeout=12,
-                impersonate="chrome110",
-            )
-
-            # Explicit status-code triage for accurate cloud diagnostics
-            if r.status_code == 403:
-                print(f"  [Anna's] {mirror} → Cloudflare Block (403)")
-                continue
-            if r.status_code == 429:
-                print(f"  [Anna's] {mirror} → Rate Limited (429) — backing off")
-                continue
-            if r.status_code != 200:
-                print(f"  [Anna's] {mirror} → Unexpected HTTP {r.status_code}")
-                continue
-
-            # Short body = Cloudflare JS challenge page, not real content
-            if len(r.text) <= 500:
-                print(f"  [Anna's] {mirror} → Challenge page (body={len(r.text)} bytes)")
-                continue
-
-            resp = r
-            base = mirror
-            break
-
-        except cffi_requests.exceptions.Timeout:
-            print(f"  [Anna's] {mirror} → Timed out")
-        except cffi_requests.exceptions.ConnectionError:
-            print(f"  [Anna's] {mirror} → Connection refused / DNS failure")
-
-    if resp is None:
-        print("  [Anna's] All mirrors exhausted — unreachable.")
+async def search_annas_archive(book_name: str) -> list[BookResult]:
+    """Launches headless Chromium via nodriver to solve the Cloudflare JS
+    challenge natively. try/finally guarantees browser cleanup even on
+    failure — critical for Streamlit Cloud's 1GB RAM ceiling."""
+    try:
+        import nodriver as uc
+    except ImportError:
+        print("  [Anna's] nodriver not installed — skipping.")
         return []
 
-    soup = BeautifulSoup(resp.text, "html.parser")
-    results: list[BookResult] = []
+    base = "https://annas-archive.gs"
+    browser = None
 
-    for item in soup.select("a[href^='/md5/']")[:15]:
-        href = item.get("href", "")
-        if not href:
-            continue
-        title_el = item.select_one("h3") or item.select_one(".text-xs") or item
-        title    = title_el.get_text(separator=" ", strip=True)[:120]
-        results.append(BookResult(
-            title=title or "Unknown",
-            link=f"{base}{href}",
-            source="Anna's Archive",
-            is_direct_pdf=False,
-            doc_type="Book",
-        ))
+    try:
+        browser = await uc.start(
+            headless=True,
+            browser_args=[
+                "--no-sandbox",
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-sync",
+                "--disable-translate",
+                "--metrics-recording-only",
+                "--no-first-run",
+                "--js-flags=--max-old-space-size=128",
+            ],
+        )
 
-    print(f"  [Anna's] {len(results)} hits found via {base}.")
-    return results
+        encoded = urllib.parse.quote(book_name)
+        page = await browser.get(f"{base}/search?q={encoded}&ext=pdf")
 
+        # Cloudflare JS challenge typically resolves within 4-6 seconds
+        await asyncio.sleep(6)
 
-async def search_annas_archive(book_name: str) -> list[BookResult]:
-    """Async wrapper — delegates synchronous cloudscraper work to a thread."""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _sync_annas_archive, book_name)
+        html_content = await page.get_content()
+
+        if len(html_content) <= 500:
+            print(f"  [Anna's] Challenge page persisted (body={len(html_content)} bytes)")
+            return []
+
+        soup = BeautifulSoup(html_content, "html.parser")
+        results: list[BookResult] = []
+
+        for item in soup.select("a[href^='/md5/']")[:15]:
+            href = item.get("href", "")
+            if not href:
+                continue
+            title_el = item.select_one("h3") or item.select_one(".text-xs") or item
+            title    = title_el.get_text(separator=" ", strip=True)[:120]
+            results.append(BookResult(
+                title=title or "Unknown",
+                link=f"{base}{href}",
+                source="Anna's Archive",
+                is_direct_pdf=False,
+                doc_type="Book",
+            ))
+
+        print(f"  [Anna's] {len(results)} hits found via {base}.")
+        return results
+
+    except Exception as exc:
+        print(f"  [Anna's] nodriver error ({type(exc).__name__}): {exc}")
+        return []
+    finally:
+        if browser is not None:
+            try:
+                browser.stop()
+            except Exception:
+                pass
 
 
 async def search_open_library(session: aiohttp.ClientSession, book_name: str) -> list[BookResult]:
@@ -481,6 +472,8 @@ def hunt_for_pdf(book_name: str, save_output: bool = True) -> None:
 
 if __name__ == "__main__":
     import sys as _sys
+    import warnings
+    warnings.filterwarnings("ignore", message=".*I/O operation on closed pipe.*")
     target = " ".join(_sys.argv[1:]) if len(_sys.argv) > 1 else input("Enter book name: ").strip()
     if not target:
         print("[-] No input. Exiting.")

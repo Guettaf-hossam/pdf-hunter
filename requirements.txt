@@ -2,6 +2,6 @@ aiohttp
 ddgs
 requests
 beautifulsoup4
-curl_cffi
+nodriver
 nest_asyncio
 streamlit
