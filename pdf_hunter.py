@@ -126,7 +126,7 @@ async def search_duckduckgo(book_name: str, max_results: int = 10) -> list[BookR
         (f'"{book_name}" pdf download',                                           "DuckDuckGo",     "General PDF"),
         # Shadow libraries (indexed via DDG)
         (f'"{book_name}" site:z-lib.fm OR site:z-lib.id',                        "Z-Library",      "Book"),
-        (f'"{book_name}" site:annas-archive.gs OR site:annas-archive.org',        "Anna's Archive", "Book"),
+        (f'"{book_name}" site:annas-archive.gl OR site:annas-archive.se OR site:annas-archive.org', "Anna's Archive", "Book"),
         # Academic OSINT
         (f'(cours OR TD OR TP OR syllabus) "{book_name}" filetype:pdf',           "DuckDuckGo",     "Academic"),
         (f'"{book_name}" site:academia.edu OR site:researchgate.net',             "DuckDuckGo",     "Academic"),
@@ -142,6 +142,10 @@ async def search_duckduckgo(book_name: str, max_results: int = 10) -> list[BookR
                     link = r.get("href", "")
                     if not link:
                         continue
+                    
+                    # Auto-correct dead Anna's Archive domains intercepted by DuckDuckGo
+                    link = re.sub(r"https?://(?:[a-z]{2}\.)?annas-archive\.(?:org|gs|se)", "https://annas-archive.gl", link)
+                    
                     batch.append(BookResult(
                         title=r.get("title", "Unknown"),
                         link=link,
