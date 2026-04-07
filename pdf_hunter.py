@@ -221,41 +221,123 @@ async def search_libgen(session: aiohttp.ClientSession, book_name: str) -> list[
 
 async def search_annas_archive(book_name: str) -> list[BookResult]:
     """Launches headless Chromium via nodriver to solve the Cloudflare JS
-    challenge natively. try/finally guarantees browser cleanup even on
-    failure — critical for Streamlit Cloud's 1GB RAM ceiling."""
+    challenge natively with Premium Proxy Integration."""
     try:
         import nodriver as uc
     except ImportError:
         print("  [Anna's] nodriver not installed — skipping.")
         return []
 
-    base = "https://annas-archive.gs"
+    base = "https://annas-archive.gl"
     browser = None
+
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    PROXY_HOST = os.getenv("PROXY_HOST")
+    PROXY_PORT = int(os.getenv("PROXY_PORT", "1080")) if os.getenv("PROXY_PORT") else 1080
+    PROXY_USER = os.getenv("PROXY_USER")
+    PROXY_PASS = os.getenv("PROXY_PASS")
+    
+    import socket
+    import base64
+    
+    # Tiny async local HTTP proxy that injects AnyIP credentials
+    async def proxy_relay_handler(reader, writer):
+        try:
+            remote_reader, remote_writer = await asyncio.open_connection(PROXY_HOST, PROXY_PORT)
+            auth = base64.b64encode(f"{PROXY_USER}:{PROXY_PASS}".encode()).decode()
+            
+            async def forward(src, dst, inject_auth=False):
+                try:
+                    while True:
+                        data = await src.read(8192)
+                        if not data: break
+                        if inject_auth:
+                            # Inject Proxy-Authorization for HTTP CONNECT or plain GET
+                            lines = data.split(b"\r\n")
+                            if len(lines) > 0 and (lines[0].startswith(b"CONNECT") or lines[0].startswith(b"GET") or lines[0].startswith(b"POST")):
+                                data = data.replace(b"\r\n\r\n", f"\r\nProxy-Authorization: Basic {auth}\r\n\r\n".encode(), 1)
+                            inject_auth = False
+                        dst.write(data)
+                        await dst.drain()
+                except:
+                    pass
+                finally:
+                    dst.close()
+            
+            asyncio.create_task(forward(reader, remote_writer, inject_auth=True))
+            asyncio.create_task(forward(remote_reader, writer))
+        except Exception as e:
+            writer.close()
+
+    # Find a free local port
+    s = socket.socket()
+    s.bind(('', 0))
+    local_proxy_port = s.getsockname()[1]
+    s.close()
+
+    relay_server = await asyncio.start_server(proxy_relay_handler, '127.0.0.1', local_proxy_port)
+    local_proxy = f"http://127.0.0.1:{local_proxy_port}"
 
     try:
         browser = await uc.start(
-            headless=True,
+            headless=False,
             browser_args=[
                 "--no-sandbox",
                 "--disable-gpu",
                 "--disable-dev-shm-usage",
-                "--disable-extensions",
                 "--disable-background-networking",
                 "--disable-sync",
                 "--disable-translate",
                 "--metrics-recording-only",
                 "--no-first-run",
                 "--js-flags=--max-old-space-size=128",
+                "--ignore-certificate-errors",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-features=IsolateOrigins,site-per-process",
+                "--window-size=1920,1080",
+                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                f"--proxy-server={local_proxy}",
             ],
         )
 
+        page = await browser.get("about:blank")
+
+        # IP identity probe to verify the proxy extension is working
+        ip_page = await browser.get("https://api.ipify.org")
+        await asyncio.sleep(2)
+        ip_html = await ip_page.get_content()
+        import re as _re
+        ip_match = _re.search(r"(\d{1,3}(?:\.\d{1,3}){3})", ip_html)
+        ip_result = ip_match.group(1) if ip_match else f"(raw: {ip_html[:80]})"
+        print(f"\n  [DEBUG] IP seen by the website: {ip_result}\n")
+
+        # 5. الخدعة الأكبر: الذهاب للصفحة الرئيسية أولاً للحصول على ملفات تعريف الارتباط (Cookies)
+        await page.get(f"{base}/")
+        print("  [Anna's] Warming up connection and solving JS challenge...")
+        await asyncio.sleep(8) # انتظار أطول قليلاً ليحل التحدي
+
+        # 6. ثم الانتقال لصفحة البحث المطلوبة
         encoded = urllib.parse.quote(book_name)
-        page = await browser.get(f"{base}/search?q={encoded}&ext=pdf")
+        await page.get(f"{base}/search?q={encoded}&ext=pdf")
+        await asyncio.sleep(5)
 
-        # Cloudflare JS challenge typically resolves within 4-6 seconds
-        await asyncio.sleep(6)
-
+        # Cloudflare JS challenge can take longer for some residential IPs
+        for _ in range(25):
+            title = await page.evaluate("document.title")
+            if title and "Just a moment" not in title and "Verify" not in title and "Attention" not in title:
+                break
+            await asyncio.sleep(1)
+            
+        await asyncio.sleep(3) # Give DOM time to fully render after CF redirect
         html_content = await page.get_content()
+        final_title = await page.evaluate("document.title")
+        print(f"  [DEBUG] Final Title: {final_title}")
+        
+        with open("debug_anna.html", "w", encoding="utf-8") as f:
+            f.write(html_content)
 
         if len(html_content) <= 500:
             print(f"  [Anna's] Challenge page persisted (body={len(html_content)} bytes)")
