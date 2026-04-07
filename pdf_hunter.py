@@ -74,6 +74,7 @@ async def _find_fastest_mirror(
     session: aiohttp.ClientSession,
     mirrors: list[tuple[str, str]],
     params: dict,
+    proxy: str = None,
 ) -> Optional[tuple[str, str]]:
     """
     Race all mirrors simultaneously — first valid response wins, rest are cancelled.
@@ -81,7 +82,7 @@ async def _find_fastest_mirror(
     """
     async def probe(base: str, path: str) -> tuple[str, str]:
         async with session.get(
-            f"{base}{path}", params=params, timeout=REQUEST_TIMEOUT
+            f"{base}{path}", params=params, proxy=proxy, timeout=REQUEST_TIMEOUT
         ) as resp:
             if resp.status != 200:
                 raise aiohttp.ClientResponseError(
@@ -179,7 +180,7 @@ async def search_duckduckgo(book_name: str, max_results: int = 10) -> list[BookR
     return results
 
 
-async def search_libgen(session: aiohttp.ClientSession, book_name: str) -> list[BookResult]:
+async def search_libgen(session: aiohttp.ClientSession, book_name: str, proxy: str = None) -> list[BookResult]:
     """
     Race all 4 LibGen mirrors — first to respond is used for the full query.
     Parses the HTML results table directly (more stable than the JSON ID pipeline).
@@ -192,7 +193,7 @@ async def search_libgen(session: aiohttp.ClientSession, book_name: str) -> list[
     ]
     params = {"req": book_name, "res": "25", "view": "simple", "column": "def"}
 
-    result = await _find_fastest_mirror(session, mirrors, params)
+    result = await _find_fastest_mirror(session, mirrors, params, proxy=proxy)
     if result is None:
         print("  [LibGen] All mirrors unreachable.")
         return []
@@ -429,7 +430,7 @@ async def search_open_library(session: aiohttp.ClientSession, book_name: str) ->
     return results
 
 
-async def search_zlibrary(session: aiohttp.ClientSession, book_name: str) -> list[BookResult]:
+async def search_zlibrary(session: aiohttp.ClientSession, book_name: str, proxy: str = None) -> list[BookResult]:
     """
     Z-Library direct scrape — z-lib.fm confirmed reachable.
     Note: site renders many results via JS — this catches any static-HTML results
@@ -441,6 +442,7 @@ async def search_zlibrary(session: aiohttp.ClientSession, book_name: str) -> lis
         async with session.get(
             f"https://z-lib.fm/s/{encoded}",
             timeout=REQUEST_TIMEOUT,
+            proxy=proxy,
             allow_redirects=True,
         ) as resp:
             if resp.status != 200:
@@ -488,6 +490,18 @@ async def hunt_for_pdf_async(book_name: str) -> list[BookResult]:
     Async orchestrator — all 5 sources run concurrently via asyncio.gather().
     return_exceptions=True ensures a single module failure does not abort others.
     """
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    proxy_url = None
+    proxy_host = os.getenv("PROXY_HOST")
+    proxy_user = os.getenv("PROXY_USER")
+    proxy_pass = os.getenv("PROXY_PASS")
+    proxy_port = os.getenv("PROXY_PORT", "1080")
+    if proxy_host and proxy_user and proxy_pass:
+        proxy_url = f"http://{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}"
+
     print(f"\n[*] TARGET : {book_name}")
     print("[*] SOURCES: DuckDuckGo | LibGen | Anna's Archive | Open Library | Z-Library")
     print("-" * 70)
@@ -495,10 +509,10 @@ async def hunt_for_pdf_async(book_name: str) -> list[BookResult]:
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         raw = await asyncio.gather(
             search_duckduckgo(book_name),
-            search_libgen(session, book_name),
+            search_libgen(session, book_name, proxy=proxy_url),
             search_annas_archive(book_name),
             search_open_library(session, book_name),
-            search_zlibrary(session, book_name),
+            search_zlibrary(session, book_name, proxy=proxy_url),
             return_exceptions=True,
         )
 
