@@ -2,6 +2,9 @@
 
 A multi-source PDF book search engine with a web interface.
 
+> **⚠️ DISCLAIMER - CYBERSECURITY ACADEMIC RESEARCH ONLY**
+> *This project was developed strictly as an academic research tool to study structural vulnerabilities and DRM mechanisms within PDF formats. It is intended for authorized security testing and ethical scraping compliance research. The author assumes no liability for misuse. Do NOT use this tool to bypass intellectual property protections or violate any platform's Terms of Service.*
+
 Search across **LibGen · Z-Library · Anna's Archive · Open Library · DuckDuckGo** simultaneously.
 
 ## Live Demo
