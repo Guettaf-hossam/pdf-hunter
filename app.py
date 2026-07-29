@@ -34,7 +34,10 @@ def inject_ga_and_nuke_badge():
       };
       
       huntAndDestroy();
-      setInterval(huntAndDestroy, 2000);
+      const observer = new MutationObserver(huntAndDestroy);
+      if (window.parent && window.parent.document.body) {
+          observer.observe(window.parent.document.body, { childList: true, subtree: true });
+      }
     </script>
     """
     components.html(html_code, height=0, width=0)

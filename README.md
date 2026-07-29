@@ -47,6 +47,15 @@ python pdf_hunter.py "Book Title Author Name"
 
 No domain purchase needed.
 
+### 100% Uptime Setup (Anti-Sleep)
+
+Streamlit Community Cloud automatically puts apps to sleep after a period of inactivity. To keep your app awake 24/7:
+1. Create a free account on [UptimeRobot](https://uptimerobot.com/).
+2. Add a new **HTTP(s) Monitor**.
+3. Point it to your Streamlit app URL (e.g., `https://pdf-hunter.streamlit.app/`).
+4. Set the monitoring interval to **5 minutes**.
+This ensures continuous traffic, preventing the server container from spinning down.
+
 ## License
 
 This project is licensed under the [GNU General Public License v3.0](LICENSE). This means anyone can copy and modify the code, but they **must** open-source their changes and they cannot use it in proprietary/closed-source commercial projects.

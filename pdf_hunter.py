@@ -154,7 +154,7 @@ async def search_duckduckgo(book_name: str, max_results: int = 10) -> list[BookR
                         is_direct_pdf=link.lower().endswith(".pdf"),
                         doc_type=dtype,
                     ))
-        except Exception as exc:
+        except (ConnectionError, TimeoutError, RuntimeError) as exc:
             print(f"  [DDG] dork failed ({type(exc).__name__}): {dork[:60]}")
         return batch
 
@@ -267,8 +267,10 @@ async def search_annas_archive(book_name: str) -> list[BookResult]:
                             inject_auth = False
                         dst.write(data)
                         await dst.drain()
-                except:
+                except (ConnectionError, TimeoutError, asyncio.CancelledError):
                     pass
+                except Exception as exc:
+                    print(f"  [Proxy Relay] Forwarding error: {exc}")
                 finally:
                     dst.close()
             
